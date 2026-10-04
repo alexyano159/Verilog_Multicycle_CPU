@@ -67,7 +67,7 @@ module Cpu_Alu_tb;
         $display("SLL: 0x80000001<<1 => Out=0x%0h, Carry=%b (expected 0x00000002, Carry=1)", ALU_Out, CarryOut);
 
         // Rotate right: 0x00000001 => 0x80000000, Carry=1
-        A = 32'h00000001; B = 0; ALU_Sel = 5'b11001; #5;
+        A = 32'h00000001; B = 0; ALU_Sel = 5'b01101; #5; // ROR opcode
         $display("ROR: 0x1 => Out=0x%0h, Carry=%b (expected 0x80000000, Carry=1)", ALU_Out, CarryOut);
 
         $finish;

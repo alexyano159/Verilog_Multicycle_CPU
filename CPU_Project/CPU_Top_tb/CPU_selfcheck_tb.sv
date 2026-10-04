@@ -3,7 +3,8 @@
 //
 // A directed program that exercises every instruction class -- all 16
 // ALU operations, LOAD/STORE, JUMP, and all six branches in both the
-// taken and the not-taken direction -- is loaded into the instruction
+// taken and the not-taken direction, including a signed compare whose
+// subtraction overflows -- is loaded into the instruction
 // ROM. The same program is executed by an instruction-level reference
 // model (an ISA simulator written in this file), and at the end the
 // CPU's 32 registers and all 256 data-memory words are compared against
@@ -13,7 +14,7 @@
 // Branch outcomes are made observable through two counters: every taken
 // branch skips a "poison" instruction that increments R30, and every
 // not-taken branch falls through to an instruction that increments R31.
-// A correct CPU finishes with R30 = 0 and R31 = 6.
+// A correct CPU finishes with R30 = 0 and R31 = 7.
 //
 // ISA conventions used by the model (see InstructionSet/InstructionsSet):
 //   - branch taken : PC = (address of branch) + 4 + sext(imm) * 4
@@ -159,6 +160,11 @@ module CPU_selfcheck_tb;
         emit(enc(BGE, 0,  3,  2, 1)); emit(enc(INC, 31, 31, 0, 0));   // not taken
         emit(enc(BLE, 0,  2,  2, 1)); emit(enc(INC, 30, 30, 0, 0));   // equal: taken
         emit(enc(BLE, 0,  2,  3, 1)); emit(enc(INC, 31, 31, 0, 0));   // not taken
+        // Signed compare where rs1 - rs2 overflows: 0x80000001 - 5 =
+        // 0x7FFFFFFC looks positive (N = 0) although rs1 < rs2; only
+        // N ^ V gives the right answer.
+        emit(enc(BLT, 0,  4,  2, 1)); emit(enc(INC, 30, 30, 0, 0));   // taken
+        emit(enc(BGT, 0,  4,  2, 1)); emit(enc(INC, 31, 31, 0, 0));   // not taken
 
         // 5. Backward branch: count R26 up to 3.
         emit(enc(LOAD, 27, 0, 0, 5));         // R27 = 3
@@ -306,7 +312,7 @@ module CPU_selfcheck_tb;
         $display("---------------------------------------------------------------");
         $display("Program: %0d instructions executed by the reference model; CPU ran %0d cycles",
                  m_steps, cycles);
-        $display("Branch counters: R30 (taken-branch poison, expect 0) = %0d, R31 (not-taken, expect 6) = %0d",
+        $display("Branch counters: R30 (taken-branch poison, expect 0) = %0d, R31 (not-taken, expect 7) = %0d",
                  cpu.reg_file.registers[30], cpu.reg_file.registers[31]);
         if (errors == 0)
             $display("[PASS] CPU final state matches the reference model (32 registers, %0d memory words)", MEM_WORDS);

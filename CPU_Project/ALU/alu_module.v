@@ -20,7 +20,7 @@ module Cpu_Alu #(
             5'b00011: ALU_Out = A | B; // OR
             5'b00100: ALU_Out = A ^ B; // XOR
             5'b00101: ALU_Out = ~(A | B); // NOR
-            5'b00110: ALU_Out = ($signed(A) < $signed(B)) ? {DATA_WIDTH{1'b1}} : {DATA_WIDTH{1'b0}}; // Set on less than-SLT
+            5'b00110: ALU_Out = ($signed(A) < $signed(B)) ? {{(DATA_WIDTH-1){1'b0}}, 1'b1} : {DATA_WIDTH{1'b0}}; // Set on less than-SLT (signed): 1 or 0
             5'b00111: begin
                 CarryOut = A[DATA_WIDTH-1];
                 ALU_Out = A << 1; // Shift left logical-SLL
@@ -61,9 +61,9 @@ module Cpu_Alu #(
         else if (ALU_Sel == 5'b00001)
             Overflow = (A[DATA_WIDTH-1] != B[DATA_WIDTH-1]) && (ALU_Out[DATA_WIDTH-1] != A[DATA_WIDTH-1]);
         else if (ALU_Sel == 5'b01010)
-            Overflow = (A == {DATA_WIDTH{1'b1}} << (DATA_WIDTH-1));
+            Overflow = (A == {1'b0, {(DATA_WIDTH-1){1'b1}}}); // INC overflows at the largest positive value (0x7FFFFFFF)
         else if (ALU_Sel == 5'b01011)
-            Overflow = (A == {DATA_WIDTH{1'b1}} << (DATA_WIDTH-1));
+            Overflow = (A == {1'b1, {(DATA_WIDTH-1){1'b0}}}); // DEC overflows at the most negative value (0x80000000)
     end
 
 endmodule

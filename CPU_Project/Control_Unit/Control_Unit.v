@@ -5,17 +5,18 @@ module Control_Unit(
     input [31:0] instruction,
     input zero_flag,
     input negative_flag,
+    input overflow_flag, // needed for signed comparisons: (rs1 < rs2) == N ^ V after rs1 - rs2
     //outputs
     output reg [4:0] AluControl,
-    output reg AluSrc, // New signal to select ALU source (register or immediate)
-    output reg MemtoReg, // New signal to select data to write to register (ALU result or memory data)
-    output reg RegDst, // New signal to select destination register
-    output reg RegWrite, // New signal to enable register write
-    output reg MemRead, // New signal to indicate memory read operation
-    output reg MemWrite, // New signal to indicate memory write operation
+    output reg AluSrc, // select ALU source (register or immediate)
+    output reg MemtoReg, // select data to write to register (ALU result or memory data)
+    output reg RegDst, // select destination register
+    output reg RegWrite, // enable register write
+    output reg MemRead, // indicate memory read operation
+    output reg MemWrite, // indicate memory write operation
     output reg Jump,
-    output reg Branch, // New signal to indicate a branch instruction
-    output reg branch_taken, // New signal to indicate if branch condition is met
+    output reg Branch, // indicate a branch instruction
+    output reg branch_taken, // indicate if branch condition is met
     output reg [3:0] current_state 
 );
     localparam FETCH= 4'b0000,
@@ -55,7 +56,7 @@ module Control_Unit(
                 MemtoReg   = 1'b0;
                 RegDst     = 1'b0;
                 RegWrite   = 1'b0;
-                MemRead    = 1'b1;
+                MemRead    = 1'b0; // instruction fetch uses the separate ROM, not the data memory
                 MemWrite   = 1'b0;
             end
 
@@ -231,25 +232,28 @@ module Control_Unit(
                         MemRead    = 1'b0;
                         MemWrite   = 1'b0;
                     end
+                    // LOAD/STORE in EXECUTE: the effective address (rs1 + imm,
+                    // from the address adder in CPU_Top) is captured in the MAR
+                    // at the end of this cycle. No memory access and no register
+                    // write happen yet -- the MAR still holds the previous
+                    // address during this cycle.
                     5'b10000: begin // LOAD
                         next_state = MEMORY;
-                        AluControl      = 5'b00000; // Use ADD to calculate address
                         AluSrc     = 1'b1;
                         MemtoReg   = 1'b1;
                         RegDst     = 1'b0;
-                        RegWrite   = 1'b1;
-                        MemRead    = 1'b1;
+                        RegWrite   = 1'b0;
+                        MemRead    = 1'b0;
                         MemWrite   = 1'b0;
                     end
                     5'b10001: begin // STORE
                         next_state = MEMORY;
-                        AluControl      = 5'b00000; // Use ADD to calculate address
                         AluSrc     = 1'b1;
                         MemtoReg   = 1'b0;
                         RegDst     = 1'b0;
                         RegWrite   = 1'b0;
                         MemRead    = 1'b0;
-                        MemWrite   = 1'b1;
+                        MemWrite   = 1'b0;
                     end
                     5'b10010: begin // JUMP
                         next_state = FETCH;
@@ -261,10 +265,15 @@ module Control_Unit(
                         MemRead    = 1'b0;
                         MemWrite   = 1'b0;
                     end
+                    // Branches: the ALU computes rs1 - rs2 (SUB), and the condition
+                    // is read from its flags. Signed less-than is N ^ V (negative
+                    // XOR overflow), which stays correct when the subtraction
+                    // overflows; equality is Z.
                     5'b10011: begin // Branch if equal (BEQ)
                         next_state = FETCH;
+                        AluControl = 5'b00001; // SUB
                         Branch     = 1'b1;
-                        branch_taken = (zero_flag) ? 1'b1 : 1'b0;
+                        branch_taken = zero_flag;
                         AluSrc     = 1'b0;
                         MemtoReg   = 1'b0;
                         RegDst     = 1'b0;
@@ -274,8 +283,9 @@ module Control_Unit(
                     end
                     5'b10100: begin // Branch if not equal (BNE)
                         next_state = FETCH;
+                        AluControl = 5'b00001; // SUB
                         Branch=1'b1;
-                        branch_taken = (!zero_flag) ? 1'b1 : 1'b0;
+                        branch_taken = !zero_flag;
                         AluSrc     = 1'b0;
                         MemtoReg   = 1'b0;
                         RegDst     = 1'b0;
@@ -285,8 +295,9 @@ module Control_Unit(
                     end
                     5'b10101: begin //Branch if less than (BLT)
                         next_state=FETCH;
+                        AluControl = 5'b00001; // SUB
                         Branch=1'b1;
-                        branch_taken=(negative_flag)?1'b1:1'b0;
+                        branch_taken = negative_flag ^ overflow_flag;                    // rs1 <  rs2
                         AluSrc=1'b0;
                         MemtoReg=1'b0;
                         RegDst=1'b0;
@@ -296,8 +307,9 @@ module Control_Unit(
                     end
                     5'b10110: begin // Branch if greater than (BGT)
                         next_state=FETCH;
+                        AluControl = 5'b00001; // SUB
                         Branch=1'b1;
-                        branch_taken=(~negative_flag & ~zero_flag)?1'b1:1'b0;
+                        branch_taken = ~(negative_flag ^ overflow_flag) & ~zero_flag;    // rs1 >  rs2
                         AluSrc=1'b0;
                         MemtoReg=1'b0;
                         RegDst=1'b0;
@@ -307,8 +319,9 @@ module Control_Unit(
                     end
                     5'b10111: begin // Branch if greater than or equal (BGE)
                         next_state=FETCH;
+                        AluControl = 5'b00001; // SUB
                         Branch=1'b1;
-                        branch_taken=(~negative_flag)?1'b1:1'b0;
+                        branch_taken = ~(negative_flag ^ overflow_flag);                 // rs1 >= rs2
                         AluSrc=1'b0;
                         MemtoReg=1'b0;
                         RegDst=1'b0;
@@ -318,8 +331,9 @@ module Control_Unit(
                     end
                     5'b11000: begin // Branch if less than or equal (BLE)
                         next_state=FETCH;
+                        AluControl = 5'b00001; // SUB
                         Branch=1'b1;
-                        branch_taken=(negative_flag | zero_flag)?1'b1:1'b0;
+                        branch_taken = (negative_flag ^ overflow_flag) | zero_flag;      // rs1 <= rs2
                         AluSrc=1'b0;
                         MemtoReg=1'b0;
                         RegDst=1'b0;
@@ -344,10 +358,10 @@ module Control_Unit(
                     5'b10000: begin // LOAD
                         next_state = WRITEBACK;
                         AluSrc     = 1'b1; // Select immediate value for ALU
-                        MemtoReg   = 1'b1; // Write data from memory to register
+                        MemtoReg   = 1'b1;
                         RegDst     = 1'b0;
-                        RegWrite   = 1'b1; // Enable register write
-                        MemRead    = 1'b1; // Enable memory read
+                        RegWrite   = 1'b0; // the MDR captures the data at the end of this cycle; rd is written in WRITEBACK
+                        MemRead    = 1'b1; // read MEM[MAR] into the MDR
                         MemWrite   = 1'b0;
                     end
                     5'b10001: begin // STORE
