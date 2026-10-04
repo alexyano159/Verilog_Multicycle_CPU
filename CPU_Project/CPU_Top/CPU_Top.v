@@ -121,6 +121,7 @@ Control_Unit cu (
     .instruction(ir),
     .zero_flag(alu_zero),
     .negative_flag(alu_negative),
+    .overflow_flag(alu_overflow),
     .AluControl(AluControl),
     .AluSrc(AluSrc),
     .MemtoReg(MemtoReg),
@@ -138,12 +139,15 @@ assign rd_addr = ir[26:22];   // according to instruction format
 assign rs1_addr = ir[21:17]; // according to instruction format
 assign rs2_addr = ir[16:12]; // according to instruction format
 assign immediate = {{20{ir[11]}}, ir[11:0]}; // Sign-extended immediate
-assign jump_target = {pc_current[DATA_WIDTH-1:DATA_WIDTH-4], ir[25:0], 2'b00}; // Jump target address
-assign branch_target = pc_current + 4 + (immediate << 2); // Branch target address
+// JUMP: PC = imm * 4 (imm is the target's word index in the instruction memory).
+assign jump_target = {{(DATA_WIDTH-14){1'b0}}, ir[11:0], 2'b00};
+// Branch: target = (address of the branch) + 4 + imm * 4. The PC was already
+// incremented in DECODE, so in EXECUTE pc_current is (address of the branch) + 4.
+assign branch_target = pc_current + (immediate << 2);
 assign alu_A = reg_data1;// Always from register
 assign alu_B = AluSrc ? immediate : reg_data2;// From register or immediate
 assign write_back = MemtoReg ? mdr : alu_result;// From memory or ALU
-assign address_bus = MemRead || MemWrite ? (reg_data1 + immediate) : pc_current;// Address for memory or PC
+assign address_bus = reg_data1 + immediate; // Effective address for LOAD/STORE: rs1 + sign-extended imm
 // Next PC logic
 assign pc_next = Jump ? jump_target :
                  (Branch && branch_taken) ? branch_target :
@@ -156,7 +160,11 @@ assign write_enable=MemWrite;// RAM Write Enable
 assign ir_load = current_state == 4'b0000; // Load IR in FETCH state
 assign pc_inc = current_state == 4'b0001; // PC increment in DECODE state
 assign pc_load = Jump || (Branch && branch_taken); // Load PC on jump or taken branch
-assign mar_load = MemRead || MemWrite; // Load MAR when accessing memory
+// The MAR captures the effective address at the end of EXECUTE, so it is
+// stable for the whole MEMORY cycle, when the data memory is read or written.
+// (Loading it together with the access itself would let the first cycle of
+// the access use the previous, stale address.)
+assign mar_load = current_state == 4'b0010; // EXECUTE
 assign mdr_load = MemRead; // Load MDR on memory read
 // Debugging outputs
 `ifdef DEBUG
@@ -168,7 +176,7 @@ assign mdr_debug          = mdr;
 assign ir_debug           = ir;
 assign mar_debug          = mar;
 assign reg_write_enable   = RegWrite;
-assign reg_read_enable    = MemRead; // Read registers when MemRead is active
+assign reg_read_enable    = MemRead; // data-memory read strobe (MDR load)
 assign pc_debug           = pc_current;
 assign b_debug            = alu_B;
 assign a_debug            = alu_A;

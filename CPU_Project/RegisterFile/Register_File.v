@@ -4,7 +4,7 @@ module Register_File #(
 )(
 
     input clk,
-    input reset, // reset added
+    input reset, // asynchronous, active-high
     input write_en,
     input [ADDR_WIDTH-1:0] read_reg1,// 5 bits to address 32 registers
     input [ADDR_WIDTH-1:0] read_reg2,
@@ -21,8 +21,8 @@ module Register_File #(
     assign read_data2 = registers[read_reg2];
 
     // Synchronous write
+    integer i; // reset loop index (module scope: Verilog-2001 forbids declarations in an unnamed block)
     always @(posedge clk or posedge reset) begin
-        integer i;
         if (reset) begin
             // Reset all registers to 0
             for (i = 0; i < (1<<ADDR_WIDTH); i = i + 1) begin
