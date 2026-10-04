@@ -15,7 +15,7 @@ digital-design project, built to learn datapath and control design.
                                  ▼
                          ┌───────────────┐  A   ┌─────┐
                          │ Register file ├─────►│     │
-                         │   32 x 32     │  B   │ ALU ├──► result, flags (Z N V C)
+                         │   32 x 32     │  B   │ ALU ├──► result → register file; flags (Z N V C) → control unit
                          └───────────────┘─────►│     │
                                  │              └─────┘
                      rs1 + imm   ▼
@@ -63,7 +63,7 @@ for the full table and the exact branch, jump and addressing rules.
 
 | Testbench | What it does | Checking |
 |---|---|---|
-| `CPU_Top_tb/CPU_selfcheck_tb.sv` | Runs a 56-instruction program covering all 16 ALU ops, LOAD/STORE, JUMP and all six branches (taken and not taken, including a signed compare whose subtraction overflows). An ISA reference model executes the same program. | **Self-checking:** compares all 32 registers and all 256 data-memory words with the model, then prints PASS/FAIL |
+| `CPU_Top_tb/CPU_selfcheck_tb.sv` | Runs a 61-instruction program (56 of them execute; the rest are skipped by taken branches) covering all 16 ALU ops, LOAD/STORE, JUMP and all six branches (taken and not taken, including a signed compare whose subtraction overflows). An ISA reference model executes the same program. | **Self-checking:** compares all 32 registers and all 256 data-memory words with the model, then prints PASS/FAIL |
 | `Instruction_Memory_tb` | Reads back the ROM contents | Self-checking (compares each word with its expected value) |
 | `alu_tb`, `Control_Unit_tb`, `Data_Memory_tb`, `RegisterFile_tb`, `Program_Counter_tb`, `Instruction_Register_tb`, `Memory_Address_Register_tb`, `Memory_Data_Register_tb` | Directed unit tests of each module | Print/waveform-based: the output is checked by inspection |
 | `CPU_Top_tb` | Runs the demo program in the ROM and prints the CPU state every cycle (stops at time 700, after about 10 instructions) | Print/waveform-based |
@@ -115,7 +115,8 @@ CPU_Project/
 
 The original version was verified only by reading waveforms and printed
 output. In Revision 2 I added the self-checking testbench above. Run on
-the original RTL, it reported 7 mismatches, which led to these fixes:
+the original RTL, it reported 7 mismatches. Together with a review of the
+RTL against the ISA, this led to these fixes:
 
 | Bug | Cause | Fix |
 |---|---|---|
